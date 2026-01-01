@@ -154,9 +154,27 @@ def encode_block(block_data, data_width, verbose=False):
         for i, xg in enumerate(xor_groups):
             print(f"  XOR[{i}]: {xg}")
 
-        print(f"\nEncoding each XOR group:")
-        for i, xg in enumerate(xor_groups):
+        print(f"\nEncoding each XOR group (RLE-aware):")
+
+        sym_idx = 0
+        i = 0
+        while i < len(xor_groups):
+            xg = xor_groups[i]
             ones = xg.count("1")
+
+            if ones == 0:
+                run_len = 1
+                while i + run_len < len(xor_groups) and xor_groups[i + run_len].count("1") == 0:
+                    run_len += 1
+
+                print(f"  XOR[{i}..{i+run_len-1}]: all-zero -> {encoded_stream[sym_idx]}")
+                i += run_len
+                sym_idx += 1
+                continue
+
+            print(f"  XOR[{i}]: {xg} (ones: {ones}) -> {encoded_stream[sym_idx]}")
+            i += 1
+            sym_idx += 1
 
         print(f"\nFinal Bitstream: {final_bitstream_full}")
         print(f"  Base Word: {base_word} ({len(base_word)} bits)")
