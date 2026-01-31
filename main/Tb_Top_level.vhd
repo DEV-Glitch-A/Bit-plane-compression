@@ -7,10 +7,16 @@ end entity;
 
 architecture sim of tb_bpc_decoder is
 
+  ---------------------------------------------------------------------------
+  -- Constants
+  ---------------------------------------------------------------------------
   constant DATA_W     : integer := 8;
   constant LOG_DATA_W : integer := 3;
   constant BLOCK_SIZE : integer := 8;
 
+  ---------------------------------------------------------------------------
+  -- DUT signals
+  ---------------------------------------------------------------------------
   signal clk_i     : std_logic := '0';
   signal rst_ni    : std_logic := '0';
 
@@ -24,6 +30,9 @@ architecture sim of tb_bpc_decoder is
 
   signal clr_i     : std_logic := '0';
 
+  ---------------------------------------------------------------------------
+  -- Input stimulus
+  ---------------------------------------------------------------------------
   type bpc_array_t is array (natural range <>) of std_logic_vector(DATA_W-1 downto 0);
 
   constant BPC_STREAM : bpc_array_t := (
@@ -34,14 +43,20 @@ architecture sim of tb_bpc_decoder is
     x"FB",  -- 11111011
     x"6E",  -- 01101110
     x"ED",  -- 11101101
-    x"5B",  -- 01011011
-    x"40"   -- 01000000 (padding)
+    "01101101",  
+    "10000000"   -- 01000000 (padding)
   );
 
 begin
 
+  ---------------------------------------------------------------------------
+  -- Clock generation (100 MHz)
+  ---------------------------------------------------------------------------
   clk_i <= not clk_i after 5 ns;
 
+  ---------------------------------------------------------------------------
+  -- DUT instance
+  ---------------------------------------------------------------------------
   dut : entity work.bpc_decoder
     generic map (
       DATA_W     => DATA_W,
@@ -60,21 +75,30 @@ begin
       clr_i     => clr_i
     );
 
+  ---------------------------------------------------------------------------
+  -- Reset process
+  ---------------------------------------------------------------------------
   reset_proc : process
   begin
     rst_ni <= '0';
-    wait for 50 ns;
+    wait for 10 ns;
     rst_ni <= '1';
     wait;
   end process;
 
+  ---------------------------------------------------------------------------
+  -- Stimulus process
+  ---------------------------------------------------------------------------
   stim_proc : process
+    variable bits_fed : integer := 0;
+    constant BITS_NEEDED : integer := 72;  -- Feed all 9 bytes (72 bits)
   begin
     -- wait for reset deassertion and pipeline settle
     wait until rst_ni = '1';
     wait for 20 ns;
     wait until rising_edge(clk_i);
 
+    -- Feed all input bytes
     for i in BPC_STREAM'range loop
 
       -- wait until DUT is ready
@@ -84,6 +108,7 @@ begin
 
       bpc_i     <= BPC_STREAM(i);
       bpc_vld_i <= '1';
+      bits_fed  := bits_fed + DATA_W;
 
       wait until rising_edge(clk_i);
 
@@ -91,14 +116,49 @@ begin
     end loop;
 
     -- stop driving inputs
-    bpc_i <= (others => '0');
+    bpc_i     <= (others => '0');
+    bpc_vld_i <= '0';
+    
+    -- Wait a bit for pipeline to process
+    wait for 50 ns;
 
-    -- allow pipeline to flush
-    wait for 500 ns;
+    -- allow outputs to complete and then clear
+    wait for 200 ns;
 
     report "Simulation finished successfully" severity note;
     wait;
   end process;
+  
+  ---------------------------------------------------------------------------
+  -- Clear control process - waits for all outputs before clearing
+  ---------------------------------------------------------------------------
+  clear_proc : process
+    variable output_count : integer := 0;
+  begin
+    wait until rst_ni = '1';
+    loop
+      wait until rising_edge(clk_i);
+      
+      if vld_o = '1' then
+        output_count := output_count + 1;
+        
+        if output_count >= 9 then
+          report "All outputs received, asserting clear" severity note;
+          exit;
+        end if;
+      end if;
+    end loop;
+    
+    -- Now assert clear
+    clr_i <= '1';
+    wait until rising_edge(clk_i);
+    clr_i <= '0';
+    
+    report "Clear asserted and released" severity note;
+    
+    wait;
+  end process;
+
 
   check_proc : process
     variable out_idx : integer := 0;
@@ -106,17 +166,6 @@ begin
     wait until rising_edge(clk_i);
 
     if vld_o = '1' then
-
-      if out_idx = 0 then
-        report "Skipping first output (pipeline warm-up): "
-               & integer'image(to_integer(data_o))
-               severity note;
-      else
-        report "Output[" & integer'image(out_idx) & "] = "
-               & integer'image(to_integer(data_o))
-               severity note;
-      end if;
-
       out_idx := out_idx + 1;
     end if;
   end process;
