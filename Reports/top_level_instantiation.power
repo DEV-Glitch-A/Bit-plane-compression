@@ -1,0 +1,59 @@
+ 
+****************************************
+Report : power
+        -analysis_effort low
+Design : bpc_decoder
+Version: W-2024.09-SP2
+Date   : Sat Feb 21 18:47:05 2026
+****************************************
+
+
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /usr/prog/optech/freepdk/fpdk45_v20__IDS/LIB/NangateOpenCellLibrary_typical_ccs.db)
+
+
+Operating Conditions: typical   Library: NangateOpenCellLibrary
+Wire Load Model Mode: top
+
+Design        Wire Load Model            Library
+------------------------------------------------
+bpc_decoder            5K_hvratio_1_1    NangateOpenCellLibrary
+
+
+Global Operating Voltage = 1.1  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000ff
+    Time Units = 1ns
+    Dynamic Power Units = 1uW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+Attributes
+----------
+i - Including register clock pin internal power
+
+
+  Cell Internal Power  = 102.3228 uW   (61%)
+  Net Switching Power  =  65.8874 uW   (39%)
+                         ---------
+Total Dynamic Power    = 168.2101 uW  (100%)
+
+Cell Leakage Power     =  35.6113 uW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)  i
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential        77.1271            0.9841        1.4807e+04           92.9178  (  45.59%)
+combinational     25.1956           64.9031        2.0805e+04          110.9037  (  54.41%)
+--------------------------------------------------------------------------------------------------
+Total            102.3227 uW        65.8872 uW     3.5611e+04 nW       203.8216 uW
+1

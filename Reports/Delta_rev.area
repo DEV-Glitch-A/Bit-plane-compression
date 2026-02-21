@@ -1,0 +1,30 @@
+ 
+****************************************
+Report : area
+Design : delta_reverse
+Version: W-2024.09-SP2
+Date   : Sat Feb 21 12:00:15 2026
+****************************************
+
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /usr/prog/optech/freepdk/fpdk45_v20__IDS/LIB/NangateOpenCellLibrary_typical_ccs.db)
+
+Number of ports:                          150
+Number of nets:                           290
+Number of cells:                          139
+Number of combinational cells:            119
+Number of sequential cells:                14
+Number of macros/black boxes:               0
+Number of buf/inv:                          9
+Number of references:                      17
+
+Combinational area:                201.628002
+Buf/Inv area:                        4.788000
+Noncombinational area:              74.480002
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                   276.108004
+Total area:                 undefined
+1

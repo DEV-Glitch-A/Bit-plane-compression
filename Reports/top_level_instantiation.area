@@ -1,0 +1,30 @@
+ 
+****************************************
+Report : area
+Design : bpc_decoder
+Version: W-2024.09-SP2
+Date   : Sat Feb 21 18:46:16 2026
+****************************************
+
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /usr/prog/optech/freepdk/fpdk45_v20__IDS/LIB/NangateOpenCellLibrary_typical_ccs.db)
+
+Number of ports:                          515
+Number of nets:                          1487
+Number of cells:                          908
+Number of combinational cells:            701
+Number of sequential cells:               189
+Number of macros/black boxes:               0
+Number of buf/inv:                        125
+Number of references:                       4
+
+Combinational area:                915.040004
+Buf/Inv area:                       71.554000
+Noncombinational area:             948.822009
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                  1863.862013
+Total area:                 undefined
+1

@@ -1,0 +1,59 @@
+ 
+****************************************
+Report : power
+        -analysis_effort low
+Design : dbp_buffer
+Version: W-2024.09-SP2
+Date   : Sat Feb 21 17:49:28 2026
+****************************************
+
+
+Library(s) Used:
+
+    gtech (File: /eda/synopsys/2024-25/RHELx86/SYN_2024.09-SP2/libraries/syn/gtech.db)
+
+
+Operating Conditions: typical   Library: NangateOpenCellLibrary
+Wire Load Model Mode: top
+
+Design        Wire Load Model            Library
+------------------------------------------------
+dbp_buffer             5K_hvratio_1_1    NangateOpenCellLibrary
+
+
+Global Operating Voltage = 1.1  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000ff
+    Time Units = 1ns
+    Dynamic Power Units = 1uW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+Attributes
+----------
+i - Including register clock pin internal power
+
+
+  Cell Internal Power  =   0.0000 uW    (0%)
+  Net Switching Power  =   8.5810 uW  (100%)
+                         ---------
+Total Dynamic Power    =   8.5810 uW  (100%)
+
+Cell Leakage Power     =   0.0000 nW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)  i
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential         0.0000        2.0903e-02            0.0000        2.0903e-02  (   0.24%)
+combinational      0.0000            8.5601            0.0000            8.5601  (  99.76%)
+--------------------------------------------------------------------------------------------------
+Total              0.0000 uW         8.5810 uW         0.0000 nW         8.5810 uW
+1
