@@ -1,0 +1,30 @@
+ 
+****************************************
+Report : area
+Design : unpacker
+Version: W-2024.09-SP2
+Date   : Sat Feb 21 11:29:30 2026
+****************************************
+
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /usr/prog/optech/freepdk/fpdk45_v20__IDS/LIB/NangateOpenCellLibrary_typical_ccs.db)
+
+Number of ports:                           31
+Number of nets:                           329
+Number of cells:                          291
+Number of combinational cells:            269
+Number of sequential cells:                22
+Number of macros/black boxes:               0
+Number of buf/inv:                         55
+Number of references:                      25
+
+Combinational area:                311.752001
+Buf/Inv area:                       29.260000
+Noncombinational area:             117.040004
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                   428.792004
+Total area:                 undefined
+1

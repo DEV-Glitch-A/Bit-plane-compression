@@ -1,0 +1,59 @@
+ 
+****************************************
+Report : power
+        -analysis_effort low
+Design : symbol_decoder
+Version: W-2024.09-SP2
+Date   : Sat Feb 21 11:40:17 2026
+****************************************
+
+
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /usr/prog/optech/freepdk/fpdk45_v20__IDS/LIB/NangateOpenCellLibrary_typical_ccs.db)
+
+
+Operating Conditions: typical   Library: NangateOpenCellLibrary
+Wire Load Model Mode: top
+
+Design        Wire Load Model            Library
+------------------------------------------------
+symbol_decoder         5K_hvratio_1_1    NangateOpenCellLibrary
+
+
+Global Operating Voltage = 1.1  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000ff
+    Time Units = 1ns
+    Dynamic Power Units = 1uW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+Attributes
+----------
+i - Including register clock pin internal power
+
+
+  Cell Internal Power  =  19.7354 uW   (50%)
+  Net Switching Power  =  19.4595 uW   (50%)
+                         ---------
+Total Dynamic Power    =  39.1949 uW  (100%)
+
+Cell Leakage Power     =   3.6391 uW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)  i
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential         3.2416            0.1879          649.5679            4.0791  (   9.52%)
+combinational     16.4938           19.2716        2.9896e+03           38.7550  (  90.48%)
+--------------------------------------------------------------------------------------------------
+Total             19.7354 uW        19.4595 uW     3.6391e+03 nW        42.8340 uW
+1
