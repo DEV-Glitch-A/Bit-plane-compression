@@ -27,6 +27,8 @@ entity bpc_decoder is
   );
 end entity;
 architecture rtl of bpc_decoder is
+  signal base_d2b     : std_logic_vector(DATA_W-1 downto 0);
+  signal base_vld_d2b : std_logic;
 
   -- Unpacker  Decoder
   signal data_u2d   : std_logic_vector(DATA_W-1 downto 0);
@@ -34,9 +36,7 @@ architecture rtl of bpc_decoder is
   signal fill_state : std_logic_vector(LOG_DATA_W downto 0);
   signal vld_u2d    : std_logic;
   signal rdy_d2u    : std_logic;
-  signal base_u2b     : std_logic_vector(DATA_W-1 downto 0);
-  signal base_vld_u2b : std_logic;
-
+  signal is_base_d2b : std_logic;
   
 
   -- Decoder Buffer
@@ -81,10 +81,16 @@ u_decoder : entity work.symbol_decoder
     len_o                 => len_d2u,
     data_vld_i            => vld_u2d,
     data_rdy_o            => rdy_d2u,
+
     data_o                => data_d2b,
     push_o                => push_d2b,
     vld_o                 => vld_d2b,
-    rdy_i                 => '1',
+    rdy_i                 => rdy_b2d,
+
+    base_o                => base_d2b,
+    base_vld_o            => base_vld_d2b,
+    is_base_o             => is_base_d2b,
+
     clr_i                 => clr_i
   );
 
@@ -99,6 +105,9 @@ u_buffer : entity work.dbp_buffer
     data_o => dbp_b2dr,
     vld_o  => vld_b2dr,
     rdy_i  => rdy_dr2b,
+    is_base_i => is_base_d2b,
+    base_i     => base_d2b,       
+    base_vld_i => base_vld_d2b,   
     clr_i  => clr_i
   );
 
@@ -116,3 +125,4 @@ u_delta_reverse : entity work.delta_reverse
   );
 
 end architecture;
+
