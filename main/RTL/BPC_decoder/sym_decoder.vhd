@@ -20,7 +20,7 @@ entity symbol_decoder is
         
         -- Output to buffer
         data_o                  : out std_logic_vector(DATA_W-1 downto 0);
-        len_o                   : out unsigned(3 downto 0);
+        len_o                   : out unsigned(LOG_DATA_W downto 0);
         push_o                  : out std_logic;
         vld_o                   : out std_logic;
 
@@ -36,15 +36,22 @@ end entity symbol_decoder;
 
 architecture rtl of symbol_decoder is
 
+    -------------------------------------
     ---------------------------------------------------------------------------
-    -- Base DBP constant (hardcoded)
-    ---------------------------------------------------------------------------
-    constant BASE_DBP : std_logic_vector(BLOCK_SIZE-2 downto 0) := "1010101";
+    signal base_dbp_q, base_dbp_d : std_logic_vector(BLOCK_SIZE-2 downto 0);
+    signal base_dbp_loaded_q, base_dbp_loaded_d : std_logic;
+    signal first_dbp_q, first_dbp_d : std_logic;
+    signal expander_data : std_logic_vector(DATA_W-1 downto 0);
 
     ---------------------------------------------------------------------------
     -- FSM
     ---------------------------------------------------------------------------
-    type state_t is (idle, dbx_decode, zeros);
+    type state_t is (
+    idle,
+    base_dbp_load,
+    dbx_decode,
+    zero_run
+    );
     signal state_q, state_d : state_t;
 
     ---------------------------------------------------------------------------
@@ -58,6 +65,7 @@ architecture rtl of symbol_decoder is
     ---------------------------------------------------------------------------
     signal block_done_q, block_done_d   : std_logic;
     signal dbp_word_cnt_q, dbp_word_cnt_d : unsigned(LOG_DATA_W downto 0);
+
 
     ---------------------------------------------------------------------------
     -- DBP register (accumulated XOR)
@@ -105,12 +113,7 @@ begin
         len_o           <= expander_len;
         data_o          <= (others => '0');
         
-        -- ✅ Calculate what the accumulated bit-plane will be
-        if expander_is_dbp = '1' then
-            accumulated_plane := expander_out;  -- DBP: use directly
-        else
-            accumulated_plane := dbp_reg_q xor expander_out;  -- DBX: XOR with previous
-        end if;
+        accumulated_plane := dbp_reg_q xor expander_out;
 
         -- =====================================================================
         -- FSM CASE STATEMENT
@@ -120,73 +123,115 @@ begin
             -------------------------------------------------------------------
             when idle =>
                 data_o <= data_i;
+                first_dbp_d <= '1';
                 len_o  <= to_unsigned(DATA_W, 4);
-
-                -- Check block_done FIRST - don't do anything if block is done
                 if block_done_q = '0' then
                     if unsigned(unpacker_fill_state_i) >= DATA_W then
                         data_rdy_o <= '1';
                         if data_vld_i = '1' then
                             push_o      <= '1';
+                            base_o      <= data_i;
+                            base_vld_o  <= '1';
                             is_base_o   <= '1';
                             dbp_word_cnt_d <= (others => '0');
-                            dbp_reg_d   <= BASE_DBP;  -- Initialize with Base DBP
-                            state_d     <= dbx_decode;
+                            state_d <= base_dbp_load;
                         end if;
                     end if;
+                end if;
+            when base_dbp_load =>
+
+                -- consume 7 bits only
+                len_o <= to_unsigned(BLOCK_SIZE-1, len_o'length);
+
+                if unsigned(unpacker_fill_state_i) >= BLOCK_SIZE-1 then
+
+                    data_rdy_o <= '1';
+
+                    if data_vld_i='1' then
+
+                        -- capture BASE_DBP plane
+                        dbp_reg_d <= data_i(DATA_W-1 downto 1);
+
+                        push_o <= '1';
+
+                        data_o(DATA_W-1 downto 1)<= data_i(DATA_W-1 downto 1);
+
+                        data_o(0) <= '0';
+
+                        dbp_word_cnt_d <= dbp_word_cnt_q + 1;
+
+                        first_dbp_d <= '0';
+
+                        -- DO NOT let expander use this word
+                        state_d <= dbx_decode;
+
+                    end if;
+
                 end if;
 
             -------------------------------------------------------------------
             when dbx_decode =>
-                -- Output the accumulated bit-plane (will be registered in dbp_reg_d)
-                data_o <= accumulated_plane & '0';
-                
+
+                accumulated_plane := dbp_reg_q xor expander_out;
+
+                data_o(DATA_W-1 downto DATA_W-(BLOCK_SIZE-1))<= accumulated_plane;
+
                 if unsigned(unpacker_fill_state_i) >= expander_len then
+
                     data_rdy_o <= '1';
 
-                    if data_vld_i = '1' then
-                        -- Update DBP register with accumulated value
+                    if data_vld_i='1' then
+
                         dbp_reg_d <= accumulated_plane;
-                        
-                        -- Always push
-                        push_o    <= '1';
-                        dbx_cnt_d <= dbx_cnt_q + 1;
+
+                        push_o <= '1';
+
+                        dbp_word_cnt_d <= dbp_word_cnt_q + 1;
+
+                        -- detect zero run
+                        if unsigned(expander_zeros) /= 0 then
+
+                            zero_cnt_d <= unsigned(expander_zeros);
+
+                            state_d <= zero_run;
+
+                        end if;
+
                     end if;
-                end if;
 
-            -------------------------------------------------------------------
-            when zeros =>
-                push_o      <= '1';
-                dbx_cnt_d   <= dbx_cnt_q + 1;
-                
-                if zero_cnt_q = 0 then
-                    data_rdy_o  <= '1';
-                    state_d     <= dbx_decode;
-                else
-                    zero_cnt_d  <= zero_cnt_q - 1;
                 end if;
+            when zero_run =>
 
+                accumulated_plane := (others=>'0');
+
+                data_o(DATA_W-1 downto DATA_W-(BLOCK_SIZE-1))
+                    <= accumulated_plane;
+
+                push_o <= '1';          
+
+                dbp_reg_d <= dbp_reg_q;
+
+                zero_cnt_d <= zero_cnt_q - 1;
+
+                dbp_word_cnt_d <= dbp_word_cnt_q + 1;
+
+                if zero_cnt_q = 1 then
+                    state_d <= dbx_decode;
+                end if;
         end case;
-
-        -- =====================================================================
-        -- DBP WORD COUNTING (after case statement)
-        -- =====================================================================
-        if push_o = '1' then
-            dbp_word_cnt_d <= dbp_word_cnt_q + 1;
-        end if;
-
         -- =====================================================================
         -- END OF DBP BLOCK (REGISTERED VALID)
         -- =====================================================================
         if push_o = '1' and 
-           dbp_word_cnt_q = to_unsigned(DATA_W, dbp_word_cnt_q'length) then
+           dbp_word_cnt_q = to_unsigned(BLOCK_SIZE-1, dbp_word_cnt_q'length) then
             len_o          <= to_unsigned(DATA_W, len_o'length);
             vld_d          <= '1';
             block_done_d   <= '1';
             dbp_word_cnt_d <= (others => '0');
             dbx_cnt_d      <= (others => '0');
-            dbp_reg_d      <= BASE_DBP;  -- ✅ Reset to BASE_DBP, not zeros
-            state_d        <= idle;
+            dbp_reg_d <= accumulated_plane;
+            base_dbp_loaded_d <= '0';
+            state_d        <= dbx_decode;
         end if;
 
         -- =====================================================================
@@ -198,7 +243,8 @@ begin
             dbx_cnt_d       <= (others => '0');
             zero_cnt_d      <= (others => '0');
             dbp_word_cnt_d  <= (others => '0');
-            dbp_reg_d       <= BASE_DBP;  --  Reset to BASE_DBP
+            dbp_reg_d <= (others => '0');
+            base_dbp_loaded_d <= '0';
             vld_d           <= '0';
         end if;
 
@@ -215,16 +261,21 @@ begin
             dbx_cnt_q       <= (others => '0');
             zero_cnt_q      <= (others => '0');
             dbp_word_cnt_q  <= (others => '0');
-            dbp_reg_q       <= BASE_DBP;  --  Initialize to BASE_DBP
+            dbp_reg_q <= (others=>'0');
+            base_dbp_q <= (others=>'0');
+            base_dbp_loaded_q <= '0';
             vld_q           <= '0';
-        elsif rising_edge(clk_i) then
-            state_q         <= state_d;
-            block_done_q    <= block_done_d;
-            dbx_cnt_q       <= dbx_cnt_d;
-            zero_cnt_q      <= zero_cnt_d;
-            dbp_word_cnt_q  <= dbp_word_cnt_d;
-            dbp_reg_q       <= dbp_reg_d;
-            vld_q           <= vld_d;
+       elsif rising_edge(clk_i) then
+            state_q <= state_d;
+            block_done_q <= block_done_d;
+            dbx_cnt_q <= dbx_cnt_d;
+            zero_cnt_q <= zero_cnt_d;
+            dbp_word_cnt_q <= dbp_word_cnt_d;
+            dbp_reg_q <= dbp_reg_d;
+            base_dbp_q <= base_dbp_d;
+            base_dbp_loaded_q <= base_dbp_loaded_d;
+            first_dbp_q <= first_dbp_d;
+            vld_q <= vld_d;
         end if;
     end process regs;
 
@@ -232,6 +283,9 @@ begin
     -- Outputs
     ---------------------------------------------------------------------------
     vld_o <= vld_q;
+
+    expander_data <= data_i when data_vld_i = '1'
+             else expander_data;
 
     ---------------------------------------------------------------------------
     -- Expander instantiation
@@ -243,7 +297,7 @@ begin
             LOG_DATA_W  => LOG_DATA_W
         )
         port map (
-            data_i      => data_i,
+            data_i => expander_data,
             zeros_o     => expander_zeros,
             len_o       => expander_len,
             dbx_dbp_o   => expander_out,
