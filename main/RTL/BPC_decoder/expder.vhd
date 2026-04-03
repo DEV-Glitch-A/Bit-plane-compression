@@ -46,7 +46,7 @@ architecture rtl of expander is
   -- Symbol length constants
   constant LEN_ALL0_DBX       : natural := 2;
   constant LEN_MULTI_ALL0_DBX : natural := 3 + clog2(DATA_W);
-  constant LEN_ALL1_DBX       : natural := 5;
+  constant LEN_ALL1_DBX       : natural := 6;
   constant LEN_ALL0_DBP       : natural := 5;
   constant LEN_TWO_CONSEC_1S  : natural := 5 + clog2(BLOCK_SIZE-2);
   constant LEN_SINGLE_1       : natural := 5 + clog2(BLOCK_SIZE-1);
@@ -67,6 +67,7 @@ architecture rtl of expander is
   -- Shift patterns
   signal pattern_two_ones : unsigned(BLOCK_SIZE-2 downto 0);
   signal pattern_one_one  : unsigned(BLOCK_SIZE-2 downto 0);
+
 
 begin
 
@@ -111,25 +112,17 @@ begin
       -- All-0 DBX: 2 bits
       dbx_dbp_o <= BLOCK_ZEROS;
       len_o     <= to_unsigned(LEN_ALL0_DBX, 4);
-      
+
     elsif prefix_3bit = "001" then
-      -- Multi-all-0 DBX: 3 + ⌈log₂(m)⌉ bits
+      zeros_o <= std_logic_vector(zero_run_count + 2);
+      len_o   <= to_unsigned(LEN_MULTI_ALL0_DBX, 4);
       dbx_dbp_o <= BLOCK_ZEROS;
-      len_o     <= to_unsigned(LEN_MULTI_ALL0_DBX, 4);
-      zeros_o   <= std_logic_vector(resize(zero_run_count + 1, LOG_DATA_W+1));
       
     elsif prefix_5bit = ALL_ONES then  -- "00000"
       -- All-1 DBX: 5 bits
       dbx_dbp_o <= BLOCK_ONES;
       len_o     <= to_unsigned(LEN_ALL1_DBX, 4);
-      
-    elsif prefix_5bit = DBXZ_DBPNZ then  -- "00001"
-      -- All-0 DBP: 5 bits
-      --  FIX: This IS a DBP symbol!
-      dbx_dbp_o <= BLOCK_ZEROS;
-      len_o     <= to_unsigned(LEN_ALL0_DBP, 4);
-      is_dbp_o  <= '1'; 
-      
+          
     elsif prefix_5bit = TWO_ONES_PREFIX then  -- "00010"
       -- 2-consecutive 1s: 5 + ⌈log₂(n-2)⌉ bits
       dbx_dbp_o <= std_logic_vector(pattern_two_ones);
