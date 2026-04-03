@@ -1,5 +1,3 @@
--- Collects base + delta/XOR words and forms DBP block
-
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
@@ -69,11 +67,10 @@ begin
     dbp_block_to_fifo.base <= signed(base_q);
     
     -- Pack the first 8 bit-planes from shift_reg[1] to shift_reg[8]
-    for i in 0 to DATA_W-1 loop
-      dbp_block_to_fifo.dbp(i) <= shift_reg_q(i+1);
+    for i in 0 to DATA_W loop
+      dbp_block_to_fifo.dbp(i) <= shift_reg_q(DATA_W-i);
     end loop;
-    
-    -- The 9th bit-plane (sign bit) uses shift_reg[0] which will be zeros
+    -- The 9th bit-plane (sign bit) uses shift_reg[0] which will be zeros 
     dbp_block_to_fifo.dbp(DATA_W) <= shift_reg_q(0);
   end process;
   ---------------------------------------------------------------------------
@@ -112,10 +109,10 @@ begin
 
         if push_i = '1' and is_base_i = '0' then    
           -- Shift in plane
-          shift_reg_d(DATA_W) <= data_i(DATA_W-1 downto 1);
+          shift_reg_d(0) <= data_i(DATA_W-1 downto 1);
 
-          for i in DATA_W-1 downto 0 loop
-            shift_reg_d(i) <= shift_reg_q(i+1);
+          for i in 1 to DATA_W loop
+            shift_reg_d(i) <= shift_reg_q(i-1);
           end loop;
 
           plane_cnt_d <= plane_cnt_q + 1;
