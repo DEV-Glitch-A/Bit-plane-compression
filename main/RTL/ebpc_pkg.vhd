@@ -33,7 +33,7 @@ package ebpc_pkg is
   function pack_dbp(b : dbp_block_t) return std_logic_vector;
   function unpack_dbp(v : std_logic_vector) return dbp_block_t;
 
-  -- ✅ ADD THIS LINE (declaration only!)
+  --  ADD THIS LINE (declaration only!)
   function clog2(n : natural) return natural;
 
 end package ebpc_pkg;
