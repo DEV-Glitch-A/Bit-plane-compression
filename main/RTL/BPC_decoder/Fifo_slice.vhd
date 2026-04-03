@@ -53,7 +53,7 @@ begin
         if rdy_i = '1' then
           rdy_o <= '1';
           if vld_i = '1' then
-            data_d <= din_i;  
+            data_d <= din_i;   -- simultaneous pop & push
           else
             state_d <= empty;
           end if;
