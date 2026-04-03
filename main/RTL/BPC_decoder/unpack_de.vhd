@@ -105,27 +105,36 @@ begin
           end if;
         
         when filling =>
+
           rdy_o <= '1';
-          
-          -- Only handle refill in filling state - do NOT output data
-          next_stream_reg := stream_reg_q;
-          next_fill_state := fill_state_q;
-          
-          -- Wait for new data to arrive
-          if vld_i = '1' then
-            state_d <= full;
-            next_stream_reg := next_stream_reg or 
-                              ((unsigned(data_i) & to_unsigned(0, DATA_W)) srl to_integer(next_fill_state));
-            next_fill_state := next_fill_state + DATA_W;
-            --  Only assert vld_o when transitioning back to full
-            vld_o <= '1';
+
+          -- allow decoder to consume remaining bits
+          if fill_state_q >= len_i then
+
+              vld_o <= '1';
+
+              if rdy_i='1' then
+
+                  stream_reg_d <= stream_reg_q sll to_integer(len_i);
+
+                  fill_state_d <= fill_state_q - len_i;
+
+              end if;
+
           end if;
-          
-          --  Do NOT output data while in filling state
-          -- The decoder should stop requesting when fill_state < required length
-          
-          stream_reg_d <= next_stream_reg;
-          fill_state_d <= next_fill_state;
+
+          -- still accept new input words
+          if vld_i='1' then
+
+              stream_reg_d <= stream_reg_q or
+                ((unsigned(data_i) & to_unsigned(0,DATA_W))
+                  srl to_integer(fill_state_q));
+
+              fill_state_d <= fill_state_q + DATA_W;
+
+              state_d <= full;
+
+          end if;
           
       end case;
     end if;
