@@ -4,157 +4,129 @@ use ieee.numeric_std.all;
 
 entity unpacker is
 generic(
-  DATA_W: positive:=8;
+  DATA_W    : positive := 8;
   LOG_DATA_W: positive := 3
 );
-  port (
-    clk_i        : in  std_logic;
-    rst_ni       : in  std_logic;
-    
-    -- BPC input stream
-    data_i       : in  std_logic_vector(DATA_W-1 downto 0);
-    vld_i        : in  std_logic;
-    rdy_o        : out std_logic;
-    
-    -- Output to Symbol Decoder
-    data_o       : out std_logic_vector(DATA_W-1 downto 0);
-    fill_state_o : out std_logic_vector(LOG_DATA_W downto 0);
-    
-    -- Length from Symbol Decoder (feedback)
-    len_i        : in  unsigned(LOG_DATA_W downto 0);
-    vld_o        : out std_logic;
-    rdy_i        : in  std_logic;
-    clr_i        : in  std_logic
-  );
+port (
+  clk_i        : in  std_logic;
+  rst_ni       : in  std_logic;
+  -- Input compressed byte stream
+  data_i       : in  std_logic_vector(DATA_W-1 downto 0);
+  vld_i        : in  std_logic;
+  rdy_o        : out std_logic;
+   -- Output symbol stream toward decoder
+  data_o       : out std_logic_vector(DATA_W-1 downto 0);
+  fill_state_o : out std_logic_vector(LOG_DATA_W downto 0);
+  -- Number of bits consumed by decoder
+  len_i        : in  unsigned(LOG_DATA_W downto 0);
+  -- Output handshake
+  vld_o        : out std_logic;
+  rdy_i        : in  std_logic;
+  -- Flush/clear unpacker
+  clr_i        : in  std_logic
+);
 end entity unpacker;
 
 architecture rtl of unpacker is
-  
-  type state_t is (idle, full, filling);
-  
-  signal stream_reg_d, stream_reg_q : unsigned(2*DATA_W-1 downto 0);
-  signal fill_state_d, fill_state_q : unsigned(LOG_DATA_W downto 0);
-  signal state_d, state_q : state_t;
-  
-begin
+  type state_t is (idle, pre_fill, running);
+  -- 4x wide buffer: holds up to 32 bits
+  constant BUF_W     : positive := 4 * DATA_W;   
+  constant RDY_THRESH: positive := 3 * DATA_W;   
+   -- Internal Registers
+  signal stream_reg_d, stream_reg_q : unsigned(BUF_W-1 downto 0);
+  signal fill_d,       fill_q       : unsigned(LOG_DATA_W+2 downto 0); -- 6 bits: 0..32
+  signal state_d,      state_q      : state_t;
 
-  -- Output data from upper portion of shift register
-  data_o <= std_logic_vector(stream_reg_q(2*DATA_W-1 downto DATA_W));
-  
-  -- Fill state output
-  fill_state_o <= std_logic_vector(fill_state_q);
-  
+begin
+  -- Always output top DATA_W bits
+  data_o <= std_logic_vector(stream_reg_q(BUF_W-1 downto BUF_W-DATA_W));
+
+  -- Cap fill_state_o at DATA_W (port width unchanged)
+  fill_state_o <= std_logic_vector(to_unsigned(DATA_W, LOG_DATA_W+1))
+                  when fill_q >= to_unsigned(DATA_W, fill_q'length)
+                  else std_logic_vector(fill_q(LOG_DATA_W downto 0));
   ---------------------------------------------------------------------------
-  -- Combinational FSM - EXACTLY matches SystemVerilog semantics
+  -- Combinational logic
   ---------------------------------------------------------------------------
-  fsm_comb : process(all)
-    variable shift : integer range 0 to 2*DATA_W;
-    variable next_stream_reg : unsigned(2*DATA_W-1 downto 0);
-    variable next_fill_state : unsigned(LOG_DATA_W downto 0);
+  comb_proc : process(all)
+    variable next_stream_buffer : unsigned(BUF_W-1 downto 0);
+    variable next_fill_level : unsigned(LOG_DATA_W+2 downto 0);
+    variable s : integer range 0 to BUF_W;
   begin
-    -- Defaults
-    shift := to_integer(len_i);
-    stream_reg_d <= stream_reg_q;
-    fill_state_d <= fill_state_q;
-    rdy_o <= '0';
-    vld_o <= '0';
+    next_stream_buffer := stream_reg_q;
+    next_fill_level := fill_q;
+    consume_length  := to_integer(len_i);
+
+    rdy_o   <= '0';
+    vld_o   <= '0';
     state_d <= state_q;
-    
-    -- Soft clear
+
     if clr_i = '1' then
-      rdy_o <= '0';
-      stream_reg_d <= (others => '0');
-      fill_state_d <= (others => '0');
+      next_stream_buffer       := (others => '0');
+      next_fill_level          := (others => '0');
       state_d <= idle;
-      
+
     else
       case state_q is
-        
+        -- ------------------------------------------------------------
+        -- IDLE: wait for first byte
+        -- ------------------------------------------------------------
         when idle =>
           rdy_o <= '1';
-          
           if vld_i = '1' then
-            fill_state_d <= to_unsigned(DATA_W, LOG_DATA_W+1);
-            stream_reg_d <= unsigned(data_i) & to_unsigned(0, DATA_W);
-            state_d <= full;
+            next_stream_buffer       := unsigned(data_i) & to_unsigned(0, 3*DATA_W);
+            next_fill_level          := to_unsigned(DATA_W, f'length);
+            state_d <= pre_fill;
           end if;
-        
-        when full =>
-          vld_o <= '1';
-              report "UNPACKER full: fill_state=" & integer'image(to_integer(fill_state_q)) &
-           " rdy_i=" & std_logic'image(rdy_i) &
-           " data_o=" & to_hstring(data_o)
-           severity note;
-          
-          if rdy_i = '1' then
-            stream_reg_d <= stream_reg_q sll shift ;
-            fill_state_d <= fill_state_q - shift;
-            
-            if (fill_state_q - shift) < DATA_W then
-              rdy_o <= '1';
-              
-              if vld_i = '1' then
-                -- Refill: use the UPDATED fill_state (fill_state_q - shift)
-                stream_reg_d <= (stream_reg_q sll shift) or 
-                                ((unsigned(data_i) & to_unsigned(0, DATA_W)) srl to_integer(fill_state_q - shift));
-                fill_state_d <= (fill_state_q - shift) + DATA_W;
-              else
-                state_d <= filling;
-              end if;
+        -- ------------------------------------------------------------
+        -- PRE_FILL: wait for second byte before asserting vld_o
+        -- ------------------------------------------------------------
+        when pre_fill =>
+          rdy_o <= '1';
+          if vld_i = '1' then
+            next_stream_buffer  := next_stream_buffer or shift_right(unsigned(data_i) & to_unsigned(0, 3*DATA_W),
+                                        to_integer(next_fill_level));
+            next_fill_level     := next_fill_level + DATA_W;
+            state_d <= running;
+          end if;
+        -- ------------------------------------------------------------
+        when running =>
+          if fill_q >= len_i then
+            vld_o <= '1';
+          end if;
+          -- STEP 1: consume
+          if rdy_i = '1' and fill_q >= len_i then
+            next_stream_buffer := shift_left(next_stream_buffer, consume_length );
+            next_fill_level := next_fill_level - consume_length ;             
+          end if;
+          -- STEP 2: refill if room (threshold 3*DATA_W = 24)
+          if next_fill_level < to_unsigned(RDY_THRESH, next_fill_level'length) then
+            rdy_o <= '1';
+            if vld_i = '1' then
+              next_stream_buffer := next_stream_buffer or shift_right(unsigned(data_i) & to_unsigned(0, 3*DATA_W),
+                                    to_integer(next_fill_level));
+              next_fill_level := next_fill_level + DATA_W;
             end if;
           end if;
-        
-        when filling =>
-
-          rdy_o <= '1';
-
-          -- allow decoder to consume remaining bits
-          if fill_state_q >= len_i then
-
-              vld_o <= '1';
-
-              if rdy_i='1' then
-
-                  stream_reg_d <= stream_reg_q sll to_integer(len_i);
-
-                  fill_state_d <= fill_state_q - len_i;
-
-              end if;
-
-          end if;
-
-          -- still accept new input words
-          if vld_i='1' then
-
-              stream_reg_d <= stream_reg_q or
-                ((unsigned(data_i) & to_unsigned(0,DATA_W))
-                  srl to_integer(fill_state_q));
-
-              fill_state_d <= fill_state_q + DATA_W;
-
-              state_d <= full;
-
-          end if;
-          
       end case;
     end if;
-    
-  end process fsm_comb;
-  
+    stream_reg_d <= next_stream_buffer;
+    fill_d       <= next_fill_level;
+  end process comb_proc;
   ---------------------------------------------------------------------------
-  -- Sequential process
+  -- Sequential
   ---------------------------------------------------------------------------
-  fsm_seq : process(clk_i, rst_ni)
+  seq_proc : process(clk_i, rst_ni)
   begin
     if rst_ni = '0' then
       state_q      <= idle;
       stream_reg_q <= (others => '0');
-      fill_state_q <= (others => '0');
+      fill_q       <= (others => '0');
     elsif rising_edge(clk_i) then
       state_q      <= state_d;
       stream_reg_q <= stream_reg_d;
-      fill_state_q <= fill_state_d;
+      fill_q       <= fill_d;
     end if;
-  end process fsm_seq;
-  
+  end process seq_proc;
+
 end architecture rtl;
