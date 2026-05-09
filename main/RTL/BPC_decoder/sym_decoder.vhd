@@ -41,7 +41,6 @@ architecture rtl of symbol_decoder is
     signal base_dbp_q, base_dbp_d : std_logic_vector(BLOCK_SIZE-2 downto 0);
     signal base_dbp_loaded_q, base_dbp_loaded_d : std_logic;
     signal first_dbp_q, first_dbp_d : std_logic;
-    signal expander_data : std_logic_vector(DATA_W-1 downto 0);
 
     ---------------------------------------------------------------------------
     -- FSM
@@ -125,7 +124,6 @@ begin
                 data_o <= data_i;
                 first_dbp_d <= '1';
                 len_o  <= to_unsigned(DATA_W, 4);
-                if block_done_q = '0' then
                     if unsigned(unpacker_fill_state_i) >= DATA_W then
                         data_rdy_o <= '1';
                         if data_vld_i = '1' then
@@ -137,7 +135,6 @@ begin
                             state_d <= base_dbp_load;
                         end if;
                     end if;
-                end if;
             when base_dbp_load =>
 
                 -- consume 7 bits only
@@ -176,25 +173,16 @@ begin
 
                 data_o(DATA_W-1 downto DATA_W-(BLOCK_SIZE-1))<= accumulated_plane;
 
-                if unsigned(unpacker_fill_state_i) >= expander_len then
-
+                if unsigned(unpacker_fill_state_i) >= expander_len and dbp_word_cnt_q /= 0 then
                     data_rdy_o <= '1';
-
                     if data_vld_i='1' then
-
                         dbp_reg_d <= accumulated_plane;
-
                         push_o <= '1';
-
                         dbp_word_cnt_d <= dbp_word_cnt_q + 1;
-
                         -- detect zero run
-                        if unsigned(expander_zeros) /= 0 then
-
-                            zero_cnt_d <= unsigned(expander_zeros);
-
+                        if unsigned(expander_zeros) >= 1 then
+                            zero_cnt_d <= unsigned(expander_zeros(LOG_DATA_W-1 downto 0));
                             state_d <= zero_run;
-
                         end if;
 
                     end if;
@@ -202,16 +190,17 @@ begin
                 end if;
             when zero_run =>
 
-                accumulated_plane := (others=>'0');
+                accumulated_plane := dbp_reg_q;
 
-                data_o(DATA_W-1 downto DATA_W-(BLOCK_SIZE-1))
-                    <= accumulated_plane;
+                data_o(DATA_W-1 downto DATA_W-(BLOCK_SIZE-1)) <= accumulated_plane;
 
                 push_o <= '1';          
 
                 dbp_reg_d <= dbp_reg_q;
 
-                zero_cnt_d <= zero_cnt_q - 1;
+                if zero_cnt_q > 1 then
+                    zero_cnt_d <= zero_cnt_q - 1;
+                end if;
 
                 dbp_word_cnt_d <= dbp_word_cnt_q + 1;
 
@@ -223,15 +212,15 @@ begin
         -- END OF DBP BLOCK (REGISTERED VALID)
         -- =====================================================================
         if push_o = '1' and 
-           dbp_word_cnt_q = to_unsigned(BLOCK_SIZE-1, dbp_word_cnt_q'length) then
+           dbp_word_cnt_q = to_unsigned(BLOCK_SIZE, dbp_word_cnt_q'length) then
             len_o          <= to_unsigned(DATA_W, len_o'length);
             vld_d          <= '1';
-            block_done_d   <= '1';
             dbp_word_cnt_d <= (others => '0');
             dbx_cnt_d      <= (others => '0');
-            dbp_reg_d <= accumulated_plane;
+            dbp_reg_d <= (others=>'0');
             base_dbp_loaded_d <= '0';
-            state_d        <= dbx_decode;
+            zero_cnt_d <= (others=>'0');
+            state_d        <= idle;
         end if;
 
         -- =====================================================================
@@ -239,7 +228,6 @@ begin
         -- =====================================================================
         if clr_i = '1' then
             state_d         <= idle;
-            block_done_d    <= '0';
             dbx_cnt_d       <= (others => '0');
             zero_cnt_d      <= (others => '0');
             dbp_word_cnt_d  <= (others => '0');
@@ -283,10 +271,6 @@ begin
     -- Outputs
     ---------------------------------------------------------------------------
     vld_o <= vld_q;
-
-    expander_data <= data_i when data_vld_i = '1'
-             else expander_data;
-
     ---------------------------------------------------------------------------
     -- Expander instantiation
     ---------------------------------------------------------------------------
@@ -297,7 +281,7 @@ begin
             LOG_DATA_W  => LOG_DATA_W
         )
         port map (
-            data_i => expander_data,
+            data_i => data_i,
             zeros_o     => expander_zeros,
             len_o       => expander_len,
             dbx_dbp_o   => expander_out,
