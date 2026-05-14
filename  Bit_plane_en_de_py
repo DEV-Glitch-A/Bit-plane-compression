@@ -1,8 +1,16 @@
 import math
 import numpy as np
+from collections import Counter
 
-BLOCK_SIZE = 8
-data_width = 8
+# ============================================================================
+# CONFIGURATION
+# ============================================================================1
+BLOCK_SIZE = 8  # Number of samples per block
+data_width = 8  # Width of each data word in bits
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
 
 def subtract_bit(a, b):
     a_bits = list(map(int, a))
@@ -30,29 +38,41 @@ def word_diff(words):
         diffs.append(diff)
     return diffs
 
+# ============================================================================
 # ENCODER FUNCTIONS
+# ============================================================================
+
 def encode_bitplanes_with_rle(bitplanes, m, base_group):
     bitstream = []
-
     n = len(bitplanes[0]) if bitplanes else 0
+
     i = 0
     while i < len(bitplanes):
+
         plane = bitplanes[i]
 
-        # --- Detect consecutive all-0 DBX planes for multi-all-0DBX ---
+        # --- Zero run-length encoding (001xxx) ---
         if plane.count("1") == 0:
+
             run_len = 1
-            while i + run_len < len(bitplanes) and bitplanes[i + run_len].count("1") == 0:
+
+            while (i + run_len < len(bitplanes) and
+                   bitplanes[i + run_len].count("1") == 0):
                 run_len += 1
-            if run_len > 1:
-                code = "001" + format(run_len - 2, f'0{int(math.ceil(math.log2(m)))}b')
-                bitstream.append(code)
-                i += run_len
-                continue
+
+            # Single all-0 DBX
+            if run_len == 1:
+                bitstream.append("01")
+
+            # Multi all-0 DBX
             else:
-                bitstream.append("01")  # single all-0 DBX
-                i += 1
-                continue
+                run_bits = int(math.ceil(math.log2(m)))
+                bitstream.append(
+                    "001" + format(run_len - 2, f'0{run_bits}b')
+                )
+
+            i += run_len
+            continue
 
         # --- All-1 DBX ---
         if plane.count("0") == 0:
@@ -60,36 +80,37 @@ def encode_bitplanes_with_rle(bitplanes, m, base_group):
             i += 1
             continue
 
-        # Single-1
+        # --- Single-1 ---
         if plane.count("1") == 1:
             pos = plane.index("1")
             pos_bits = int(math.ceil(math.log2(max(1, n))))
-            code = "00011" + format(pos, f'0{pos_bits}b')
-            bitstream.append(code)
+            bitstream.append("00011" + format(pos, f'0{pos_bits}b'))
             i += 1
             continue
 
-        # 2 consecutive 1s
+        # --- Exactly two consecutive 1s ---
         if plane.count("1") == 2:
-            found_two = False
             for j in range(n - 1):
                 if plane[j] == "1" and plane[j + 1] == "1":
                     pos_bits = int(math.ceil(math.log2(max(1, n))))
-                    code = "00010" + format(j, f'0{pos_bits}b')
-                    bitstream.append(code)
-                    found_two = True
+                    bitstream.append("00010" + format(j, f'0{pos_bits}b'))
                     break
-            if found_two:
-                i += 1
-                continue
+            else:
+                bitstream.append("1" + plane)
 
-        # Uncompressed
+            i += 1
+            continue
+
+        # --- Raw ---
         bitstream.append("1" + plane)
         i += 1
 
     return bitstream
-
 def encode_block(block_data, data_width, verbose=False):
+    """
+    Encode a single block of data
+    Returns: (final_bitstream_full, stats)
+    """
     # Convert to binary words
     binary_words = [format(val & ((1 << data_width) - 1), f'0{data_width}b')
                     for val in block_data]
@@ -98,7 +119,7 @@ def encode_block(block_data, data_width, verbose=False):
     # Compute differences
     diffs = word_diff(binary_words)
 
-    # Group bits
+    # Group bits (transpose to get bit planes)
     num_bits = len(diffs[0])
     groups = [''.join(diff[i] for diff in diffs) for i in range(num_bits)]
 
@@ -154,27 +175,39 @@ def encode_block(block_data, data_width, verbose=False):
         for i, xg in enumerate(xor_groups):
             print(f"  XOR[{i}]: {xg}")
 
-        print(f"\nEncoding each XOR group (RLE-aware):")
+        print(f"\nEncoding each XOR group (single-plane):")
 
-        sym_idx = 0
+        enc_idx = 0
         i = 0
-        while i < len(xor_groups):
-            xg = xor_groups[i]
-            ones = xg.count("1")
 
-            if ones == 0:
+        while i < len(xor_groups):
+
+            xg = xor_groups[i]
+
+            # Detect zero run
+            if xg.count("1") == 0:
+
                 run_len = 1
-                while i + run_len < len(xor_groups) and xor_groups[i + run_len].count("1") == 0:
+
+                while (i + run_len < len(xor_groups) and
+                       xor_groups[i + run_len].count("1") == 0):
                     run_len += 1
 
-                print(f"  XOR[{i}..{i+run_len-1}]: all-zero -> {encoded_stream[sym_idx]}")
+                if run_len == 1:
+                    print(f"  XOR[{i}]: {xg} (ones: 0) -> {encoded_stream[enc_idx]}")
+                else:
+                    print(f"  XOR[{i}...{i+run_len-1}]: {xg} (ones: 0) -> {encoded_stream[enc_idx]}")
+
+                enc_idx += 1
                 i += run_len
-                sym_idx += 1
                 continue
 
-            print(f"  XOR[{i}]: {xg} (ones: {ones}) -> {encoded_stream[sym_idx]}")
+            ones = xg.count("1")
+            print(f"  XOR[{i}]: {xg} (ones: {ones}) -> {encoded_stream[enc_idx]}")
+
+            enc_idx += 1
             i += 1
-            sym_idx += 1
+
 
         print(f"\nFinal Bitstream: {final_bitstream_full}")
         print(f"  Base Word: {base_word} ({len(base_word)} bits)")
@@ -196,8 +229,10 @@ def encode_block(block_data, data_width, verbose=False):
         'encoded_stream': encoded_stream
     }
 
-
+# ============================================================================
 # DECODER FUNCTIONS
+# ============================================================================
+
 def decode_dbx_only(bitstream, m, n, expected_planes):
     pos = 0
     dbx_planes = []
@@ -286,6 +321,7 @@ def add_bit(prev_word, diff):
     return format(new_val, '08b')
 
 def reconstruct_words(base_word, diffs):
+    """Reconstruct original binary words from base word and differences."""
     words = [base_word]
     for diff in diffs:
         prev_word = words[-1]
@@ -304,6 +340,7 @@ def decode_block(final_bitstream_full, data_width, block_size):
     # Extract encoded DBX planes (rest of bitstream)
     encoded_bitstream = final_bitstream_full[data_width + n:]
 
+    # FIX: Decode 8 XOR groups (for 9-bit diffs), not 7
     decoded_xor_groups = decode_dbx_only(
         encoded_bitstream,
         m=data_width,
@@ -324,7 +361,9 @@ def decode_block(final_bitstream_full, data_width, block_size):
 
     return [int(w, 2) for w in reconstructed_words]
 
+# ============================================================================
 # MAIN PROCESSING
+# ============================================================================
 
 def main():
     # Load data
@@ -338,8 +377,7 @@ def main():
     print(f"Loaded {len(data)} samples from file.")
     print(f"First 10 samples: {data[:10]}")
 
-
-    data = data[:100]
+    data = data[:256]
 
     print(f"\n{'='*60}")
     print(f"PROCESSING {len(data)} SAMPLES")
@@ -361,7 +399,7 @@ def main():
         block_data = data[start_idx:end_idx]
 
         # Encode with detailed output only for first block
-        verbose = (block_idx == 3)
+        verbose = (block_idx == 0)
         bitstream, stats, details = encode_block(block_data, data_width, verbose=verbose)
 
         encoded_blocks.append(bitstream)
@@ -377,8 +415,9 @@ def main():
     total_original = sum(s['original_bits'] for s in all_stats)
     total_compressed = sum(s['compressed_bits'] for s in all_stats)
 
-
+    print(f"\n{'='*60}")
     print(f"OVERALL ENCODING STATISTICS")
+    print(f"{'='*60}")
     print(f"Total blocks: {num_blocks}")
     print(f"Total original bits: {total_original}")
     print(f"Total compressed bits: {total_compressed}")
@@ -386,8 +425,9 @@ def main():
     print(f"Average zero planes: {np.mean([s['zero_planes'] for s in all_stats]):.1f}")
 
     # DECODE AND VERIFY
+    print(f"\n{'='*60}")
     print(f"DECODING AND VERIFICATION")
-
+    print(f"{'='*60}")
 
     all_decoded = []
     for block_idx in range(num_blocks):
