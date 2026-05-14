@@ -2,10 +2,15 @@ import math
 import numpy as np
 from collections import Counter
 
-# CONFIGURATION
 # ============================================================================
+# CONFIGURATION
+# ============================================================================1
 BLOCK_SIZE = 8  # Number of samples per block
 data_width = 8  # Width of each data word in bits
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
 
 def subtract_bit(a, b):
     a_bits = list(map(int, a))
@@ -41,16 +46,38 @@ def encode_bitplanes_with_rle(bitplanes, m, base_group):
     bitstream = []
     n = len(bitplanes[0]) if bitplanes else 0
 
-    for plane in bitplanes:
+    i = 0
+    while i < len(bitplanes):
 
-        # --- All-0 DBX (single-plane only) ---
+        plane = bitplanes[i]
+
+        # --- Zero run-length encoding (001xxx) ---
         if plane.count("1") == 0:
-            bitstream.append("01")
+
+            run_len = 1
+
+            while (i + run_len < len(bitplanes) and
+                   bitplanes[i + run_len].count("1") == 0):
+                run_len += 1
+
+            # Single all-0 DBX
+            if run_len == 1:
+                bitstream.append("01")
+
+            # Multi all-0 DBX
+            else:
+                run_bits = int(math.ceil(math.log2(m)))
+                bitstream.append(
+                    "001" + format(run_len - 2, f'0{run_bits}b')
+                )
+
+            i += run_len
             continue
 
         # --- All-1 DBX ---
         if plane.count("0") == 0:
             bitstream.append("00000")
+            i += 1
             continue
 
         # --- Single-1 ---
@@ -58,6 +85,7 @@ def encode_bitplanes_with_rle(bitplanes, m, base_group):
             pos = plane.index("1")
             pos_bits = int(math.ceil(math.log2(max(1, n))))
             bitstream.append("00011" + format(pos, f'0{pos_bits}b'))
+            i += 1
             continue
 
         # --- Exactly two consecutive 1s ---
@@ -69,15 +97,20 @@ def encode_bitplanes_with_rle(bitplanes, m, base_group):
                     break
             else:
                 bitstream.append("1" + plane)
+
+            i += 1
             continue
 
         # --- Raw ---
         bitstream.append("1" + plane)
+        i += 1
 
     return bitstream
-
 def encode_block(block_data, data_width, verbose=False):
-
+    """
+    Encode a single block of data
+    Returns: (final_bitstream_full, stats)
+    """
     # Convert to binary words
     binary_words = [format(val & ((1 << data_width) - 1), f'0{data_width}b')
                     for val in block_data]
@@ -144,9 +177,36 @@ def encode_block(block_data, data_width, verbose=False):
 
         print(f"\nEncoding each XOR group (single-plane):")
 
-        for i, xg in enumerate(xor_groups):
+        enc_idx = 0
+        i = 0
+
+        while i < len(xor_groups):
+
+            xg = xor_groups[i]
+
+            # Detect zero run
+            if xg.count("1") == 0:
+
+                run_len = 1
+
+                while (i + run_len < len(xor_groups) and
+                       xor_groups[i + run_len].count("1") == 0):
+                    run_len += 1
+
+                if run_len == 1:
+                    print(f"  XOR[{i}]: {xg} (ones: 0) -> {encoded_stream[enc_idx]}")
+                else:
+                    print(f"  XOR[{i}...{i+run_len-1}]: {xg} (ones: 0) -> {encoded_stream[enc_idx]}")
+
+                enc_idx += 1
+                i += run_len
+                continue
+
             ones = xg.count("1")
-            print(f"  XOR[{i}]: {xg} (ones: {ones}) -> {encoded_stream[i]}")
+            print(f"  XOR[{i}]: {xg} (ones: {ones}) -> {encoded_stream[enc_idx]}")
+
+            enc_idx += 1
+            i += 1
 
 
         print(f"\nFinal Bitstream: {final_bitstream_full}")
@@ -169,7 +229,7 @@ def encode_block(block_data, data_width, verbose=False):
         'encoded_stream': encoded_stream
     }
 
-
+# ============================================================================
 # DECODER FUNCTIONS
 # ============================================================================
 
@@ -261,6 +321,7 @@ def add_bit(prev_word, diff):
     return format(new_val, '08b')
 
 def reconstruct_words(base_word, diffs):
+    """Reconstruct original binary words from base word and differences."""
     words = [base_word]
     for diff in diffs:
         prev_word = words[-1]
@@ -279,6 +340,7 @@ def decode_block(final_bitstream_full, data_width, block_size):
     # Extract encoded DBX planes (rest of bitstream)
     encoded_bitstream = final_bitstream_full[data_width + n:]
 
+    # FIX: Decode 8 XOR groups (for 9-bit diffs), not 7
     decoded_xor_groups = decode_dbx_only(
         encoded_bitstream,
         m=data_width,
@@ -315,10 +377,11 @@ def main():
     print(f"Loaded {len(data)} samples from file.")
     print(f"First 10 samples: {data[:10]}")
 
-    data = data[:128]
+    data = data[:256]
 
     print(f"\n{'='*60}")
     print(f"PROCESSING {len(data)} SAMPLES")
+    print(f"{'='*60}")
 
     # Trim to multiple of block size
     num_blocks = len(data) // BLOCK_SIZE
