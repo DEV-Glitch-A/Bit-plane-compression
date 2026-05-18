@@ -364,20 +364,66 @@ def decode_block(final_bitstream_full, data_width, block_size):
 # ============================================================================
 # MAIN PROCESSING
 # ============================================================================
+def zrle_encode(data, max_burst_len=8):
 
+    zrle_stream = []
+    non_zero_data = []
+
+    i = 0
+
+    while i < len(data):
+
+        # Zero burst
+        if data[i] == 0:
+
+            run_len = 1
+
+            while (i + run_len < len(data) and
+                   data[i + run_len] == 0 and
+                   run_len < max_burst_len):
+
+                run_len += 1
+
+            # 0 + burst counter
+            zrle_stream.append(
+                "0" + format(run_len - 1, '03b')
+            )
+
+            i += run_len
+
+        else:
+            # Non-zero marker
+            zrle_stream.append("1")
+
+            non_zero_data.append(data[i])
+
+            i += 1
+
+    return zrle_stream, non_zero_data
 def main():
     # Load data
     with open("D:\Projekt\sample compressed data\dense_layer_unsigned.txt", "r") as f:
         content = f.read().strip()
 
     data = [int(x) for x in content.replace(',', ' ').split()]
-    data = [val for val in data if val != 0]
+
     data = np.array(data, dtype=int)
+    data = data[:32]
+    zrle_stream, non_zero_data = zrle_encode(data)
+
+    print("\nZRLE STREAM:")
+    print(' '.join(zrle_stream[:32]))
+
+    print(f"\nOriginal samples : {len(data)}")
+    print(f"Non-zero samples : {len(non_zero_data)}")
+
+    # Only non-zero values go to BPC
+    data = np.array(non_zero_data, dtype=int)
 
     print(f"Loaded {len(data)} samples from file.")
     print(f"First 10 samples: {data[:10]}")
 
-    data = data[:256]
+
 
     print(f"\n{'='*60}")
     print(f"PROCESSING {len(data)} SAMPLES")
@@ -411,6 +457,41 @@ def main():
                   f"({stats['compressed_bits']}/{stats['original_bits']} bits, "
                   f"{stats['zero_planes']}/{stats['total_planes']} zero planes)")
 
+        # Join complete ZRLE bitstream
+        zrle_bits = ''.join(zrle_stream)
+
+        # Pad to multiple of 8 bits
+        padding = (8 - (len(zrle_bits) % 8)) % 8
+        zrle_bits += '0' * padding
+
+        # Split into 8-bit words
+        zrle_bytes = [
+            zrle_bits[i:i+8]
+            for i in range(0, len(zrle_bits), 8)
+        ]
+
+        # Save one byte per line
+        with open("zrle_input.txt", "w") as f:
+            for byte in zrle_bytes:
+                f.write(byte + '\n')
+
+    with open("bpc_bitstream.txt", "w") as f:
+     for block_idx, stream in enumerate(encoded_blocks):
+        # Pad THIS block only
+        padding = (8 - (len(stream) % 8)) % 8
+        padded_stream = stream + ('0' * padding)
+        # Split into bytes
+        bytes_list = [
+            padded_stream[i:i+8]
+            for i in range(0, len(padded_stream), 8)
+        ]
+        # Save bytes
+        for byte in bytes_list:
+            f.write(byte + '\n')
+
+    print("\nSaved:")
+    print("  zrle_bitstream.txt")
+    print("  bpc_bitstream.txt")
     # Overall statistics
     total_original = sum(s['original_bits'] for s in all_stats)
     total_compressed = sum(s['compressed_bits'] for s in all_stats)
