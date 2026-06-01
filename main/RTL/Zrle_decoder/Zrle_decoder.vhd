@@ -60,9 +60,6 @@ begin
     rdy_o <= '0';
     znz_o <= stream_reg_q(2*DATA_W-1);
 
-    -- =====================================================================
-    -- FIX 5: flush resets all pipeline state (synchronous, high priority)
-    -- =====================================================================
     if flush_i = '1' then
 
       state_d      <= empty;
@@ -86,37 +83,20 @@ begin
           v_fill     := fill_state_q;
           v_state    := full;
           v_zero_cnt := zero_cnt_q;
-          -- ================================================================
-          -- FIX 1a: gate vld_o on fill_state > 0.
-          -- Without this, an empty (all-zero) stream register asserts valid
-          -- and gets decoded as a spurious zero-run with count=0.
-          -- ================================================================
           if fill_state_q > 0 then
 
             znz_o <= v_stream(2*DATA_W-1);
-
-            -- ================================================================
-            -- FIX 1b: for a zero-run token we need flag + count bits.
-            -- If fill is insufficient, stall in 'filling' until more arrive.
-            -- ================================================================
             if v_stream(2*DATA_W-1) = '0' and fill_state_q < to_unsigned(ZRUN_BITS, fill_state_q'length) then ---(checks if data_w is ending with '0')
               -- Not enough bits to read the full count field; go fetch more.
               rdy_o   <= '1';
               v_state := filling;
-              -- Don't assert vld_o; wait silently.
             else
               vld_o <= '1'; (Current token is valid and decodable)
               if rdy_i = '1' then
-                -- ----------------------------------------------------------
                 -- Step 1 – CONSUME current token (using variable, immediate)
-                -- ----------------------------------------------------------
                 if v_stream(2*DATA_W-1) = '0' then
                   -- Zero-run: read count field BEFORE shifting.
                   v_count := unsigned(v_stream(2*DATA_W-2 downto 2*DATA_W-1-LOG_MAX_ZRLE_LEN));
-                  -- FIX 3: use "> 1" to prevent count=1 → underflow bug.
-                  -- count=0 → 1 zero (flag only, no zeros state needed).
-                  -- count=1 → illegal per encoder contract; treated as 1 zero.
-                  -- count≥2 → enter zeros state.
                   if v_count > 1 then
                     v_zero_cnt := v_count - 2; --(first zero emitted now, remaining zeros emitted in ZERO state)
                     v_state    := zeros;
