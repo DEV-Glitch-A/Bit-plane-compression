@@ -1,25 +1,33 @@
- 
- Error: There are no active faults in the fault list. (M114)
+ATPG performed for stuck fault model using internal pattern source.
+ ----------------------------------------------------------
+ #patterns     #faults     #ATPG faults  test      process
+ stored     detect/active  red/au/abort  coverage  CPU time
+ ---------  -------------  ------------  --------  --------
+ Begin deterministic ATPG: #uncollapsed_faults=7097, abort_limit=10...
+ 28           6237    860         0/0/0    90.19%      0.05
+ 60            680    161         9/5/1    98.10%      0.08
+ Local redundancy analysis results: #redundant_faults=15, CPU_time=0.00 sec
+ 83             78     14        33/8/8    99.74%      0.09
  
      Uncollapsed Stuck Fault Summary Report
  -----------------------------------------------
  fault class                     code   #faults
  ------------------------------  ----  ---------
- Detected                         DT       9439
+ Detected                         DT       8663
  Possibly detected                PT          0
- Undetectable                     UD        387
- ATPG untestable                  AU         10
- Not detected                     ND          0
+ Undetectable                     UD        374
+ ATPG untestable                  AU          9
+ Not detected                     ND         14
  -----------------------------------------------
- total faults                              9836
- test coverage                            99.89%
+ total faults                              9060
+ test coverage                            99.74%
  -----------------------------------------------
             Pattern Summary Report
  -----------------------------------------------
- #internal patterns                          84
-     #basic_scan patterns                    84
+ #internal patterns                          83
+     #basic_scan patterns                    83
  -----------------------------------------------
             CPU Usage Summary Report
  -----------------------------------------------
- Total CPU time                            0.00
+ Total CPU time                            0.09
  -----------------------------------------------
